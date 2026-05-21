@@ -1,0 +1,28 @@
+name: easy_upgrade
+description: Easy, opinionated upgrade prompts for Flutter apps. Force major upgrades, prompt for minor, silent on patch. iOS App Store + Android Play Core in-app updates.
+version: 0.1.0
+homepage: https://github.com/4mitabh/easy_upgrade
+repository: https://github.com/4mitabh/easy_upgrade
+
+environment:
+  sdk: ^3.12.0
+  flutter: ">=3.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  http: ^1.2.0
+  package_info_plus: ^8.0.0
+  url_launcher: ^6.3.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: dev.easyupgrade.easy_upgrade
+        pluginClass: EasyUpgradePlugin
