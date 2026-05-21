@@ -119,6 +119,79 @@ EasyUpgrade(
 - Play Core `app-update` is pulled in transitively — no extra setup needed.
 - When releasing in Play Console, set your **in-app update priority** (0–5). The default mapping (`4+` immediate, `1+` flexible, `0` silent) is configurable.
 
+### Automating `inAppUpdatePriority` with Fastlane
+
+The whole point of this plugin's Android path is that you tell Play Console *how* to nag users at release time. You can let Fastlane diff your local version against what's currently live and set the priority for you — so a major bump auto-forces, a minor bump auto-prompts, and a patch ships silently.
+
+Fastlane's `upload_to_play_store` (a.k.a. `supply`) accepts an `in_app_update_priority:` parameter. Combine it with `google_play_track_release_names` to read the current production version. A minimal `Fastfile`:
+
+```ruby
+default_platform(:android)
+
+PACKAGE_NAME = "com.example.app"
+
+# Map semver delta -> Play Console priority that matches easy_upgrade's defaults:
+#   major bump  -> 5  (priority >= androidImmediatePriority=4 -> IMMEDIATE flow)
+#   minor bump  -> 2  (priority >= androidFlexiblePriority=1  -> FLEXIBLE  flow)
+#   patch / no change -> 0 (silent)
+def priority_for(local, store)
+  return 0 if store.nil? || store.empty?
+  l_maj, l_min, _ = local.split(/[-+]/).first.split(".").map(&:to_i)
+  s_maj, s_min, _ = store.split(/[-+]/).first.split(".").map(&:to_i)
+  return 5 if l_maj > s_maj
+  return 2 if l_maj == s_maj && l_min > s_min
+  0
+end
+
+platform :android do
+  desc "Build + upload to Play Store with auto-computed in-app update priority"
+  lane :deploy do
+    # 1. Read the version we're about to ship from pubspec.yaml
+    pubspec     = File.read("../pubspec.yaml")
+    local_full  = pubspec.match(/^version:\s*(.+)/)[1].strip   # e.g. "1.3.0+42"
+    local_semver = local_full.split("+").first                 # -> "1.3.0"
+
+    # 2. Read what's currently live on the production track
+    store_names = google_play_track_release_names(
+      package_name: PACKAGE_NAME,
+      track: "production",
+    )
+    store_semver = store_names&.first&.split(/\s|-/)&.first    # release names are usually the version string
+
+    priority = priority_for(local_semver, store_semver)
+    UI.message("local=#{local_semver}  store=#{store_semver}  -> in_app_update_priority=#{priority}")
+
+    # 3. Build the AAB
+    sh("cd .. && flutter build appbundle --release")
+
+    # 4. Upload with the computed priority
+    upload_to_play_store(
+      package_name: PACKAGE_NAME,
+      aab: "../build/app/outputs/bundle/release/app-release.aab",
+      track: "production",
+      in_app_update_priority: priority,
+      release_status: "completed",
+    )
+  end
+end
+```
+
+Prerequisites:
+
+- A Google Play service-account JSON key with the *Release manager* role; point Fastlane at it via `json_key_file:` (or the `SUPPLY_JSON_KEY` env var) in an `Appfile` or directly on the action.
+- The release name in Play Console must contain the semver (the default Play Console "Release name" is the version string, so this works out of the box). If your release names are freeform, pull the version from `pubspec.yaml` on both sides instead — keep `local_semver` as the source of truth and only call `google_play_track_release_names` to detect "no previous release."
+- `in_app_update_priority` is **per-release**, not per-app. Setting it once doesn't affect older releases.
+
+How this lines up with the plugin defaults:
+
+| Local vs. store | Fastlane sets | easy_upgrade behavior on user device |
+| --- | --- | --- |
+| Major bump (e.g. `1.x.x` → `2.0.0`) | priority `5` | Immediate (blocking) Play Core flow |
+| Minor bump (`1.2.x` → `1.3.0`) | priority `2` | Flexible (background) Play Core flow |
+| Patch only / no change | priority `0` | No prompt |
+
+If you change `androidImmediatePriority` / `androidFlexiblePriority` in your widget, update the numbers `priority_for` returns to match.
+
 ## iOS setup
 
 - No native setup. `iTunes Search API` is public.
