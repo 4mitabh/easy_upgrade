@@ -1,3 +1,6 @@
+// Internal — not exported from `package:easy_upgrade/easy_upgrade.dart`.
+// ignore_for_file: public_member_api_docs
+
 import 'package:flutter/services.dart';
 
 class AndroidUpdateInfo {
@@ -30,20 +33,33 @@ class AndroidUpdateInfo {
 }
 
 typedef AndroidFlexibleDownloadedCallback = void Function();
+typedef AndroidUpdateAcceptedCallback = void Function();
+
+// Android Activity.RESULT_OK == -1
+const int _androidResultOk = -1;
 
 class AndroidUpdateManager {
   static const MethodChannel _channel =
-      MethodChannel('dev.easyupgrade/easy_upgrade');
+      MethodChannel('com.mysthetic.easyupgrade');
 
   static AndroidFlexibleDownloadedCallback? _onFlexibleDownloaded;
+  static AndroidUpdateAcceptedCallback? _onUpdateAccepted;
   static bool _handlerInstalled = false;
 
   static void _ensureHandler() {
     if (_handlerInstalled) return;
     _handlerInstalled = true;
     _channel.setMethodCallHandler((call) async {
-      if (call.method == 'onFlexibleDownloaded') {
-        _onFlexibleDownloaded?.call();
+      switch (call.method) {
+        case 'onFlexibleDownloaded':
+          _onFlexibleDownloaded?.call();
+          break;
+        case 'onUpdateActivityResult':
+          final args = call.arguments;
+          if (args is Map && args['resultCode'] == _androidResultOk) {
+            _onUpdateAccepted?.call();
+          }
+          break;
       }
       return null;
     });
@@ -53,6 +69,11 @@ class AndroidUpdateManager {
       AndroidFlexibleDownloadedCallback? cb) {
     _ensureHandler();
     _onFlexibleDownloaded = cb;
+  }
+
+  static void setUpdateAcceptedListener(AndroidUpdateAcceptedCallback? cb) {
+    _ensureHandler();
+    _onUpdateAccepted = cb;
   }
 
   static Future<AndroidUpdateInfo?> checkForUpdate() async {

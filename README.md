@@ -81,7 +81,8 @@ EasyUpgrade(
   },
   onCheck: (info) => print('check: ${info.severity}'),
   onPromptShown: (info) => analytics.log('upgrade_shown'),
-  onUpdateTapped: (info) => analytics.log('upgrade_accepted'),
+  onUpgradeFlowStarted: (info) => analytics.log('upgrade_flow_started'),
+  onUpdateAccepted: (info) => analytics.log('upgrade_accepted'),
   onError: (e, st) => crashlytics.recordError(e, st),
   child: const HomePage(),
 )
@@ -198,9 +199,21 @@ If you change `androidImmediatePriority` / `androidFlexiblePriority` in your wid
 - Set `appStoreRegion` if your app's primary store is outside the US.
 - Set `bundleIdOverride` if your debug/staging bundle id differs from your store listing.
 
+## Hooks
+
+| Hook | Fires when |
+| --- | --- |
+| `onCheck` | After every check, including no-upgrade-available |
+| `shouldPromptOptional` | Before showing a *minor* prompt — return `false` to skip |
+| `onPromptShown` | Immediately before the iOS dialog or Play Core flow |
+| `onUpgradeFlowStarted` | iOS: user tapped "Update". Android: Play Core's UI launched |
+| `onUpdateAccepted` | iOS: `launchUrl` returned `true`. Android: Play Core returned `RESULT_OK` |
+| `onError` | Any failure (network, channel, hook execution) |
+
 ## Limitations
 
 - No built-in persistence — provide your own via `shouldPromptOptional` (wire `shared_preferences` or anything else).
 - No built-in localization — provide your own strings via `EasyUpgradeMessages`.
 - No Appcast / custom feed support.
 - macOS, Windows, Linux, and Web are unsupported and return `severity = none`.
+- `EasyUpgrade.checkNow()` uses the most-recently-mounted `EasyUpgrade` widget. If you nest multiple, only the inner one is reachable via `checkNow()`.

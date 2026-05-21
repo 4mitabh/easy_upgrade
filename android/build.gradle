@@ -1,4 +1,4 @@
-group 'dev.easyupgrade.easy_upgrade'
+group 'com.mysthetic.easyupgrade'
 version '0.1.0'
 
 buildscript {
@@ -25,7 +25,7 @@ apply plugin: 'com.android.library'
 apply plugin: 'kotlin-android'
 
 android {
-    namespace 'dev.easyupgrade.easy_upgrade'
+    namespace 'com.mysthetic.easyupgrade'
     compileSdk 34
 
     compileOptions {

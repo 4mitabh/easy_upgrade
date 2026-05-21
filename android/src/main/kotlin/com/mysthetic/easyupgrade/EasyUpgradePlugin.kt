@@ -1,4 +1,4 @@
-package dev.easyupgrade.easy_upgrade
+package com.mysthetic.easyupgrade
 
 import android.app.Activity
 import android.content.Intent
@@ -26,7 +26,7 @@ class EasyUpgradePlugin :
     ActivityResultListener {
 
     private companion object {
-        const val CHANNEL_NAME = "dev.easyupgrade/easy_upgrade"
+        const val CHANNEL_NAME = "com.mysthetic.easyupgrade"
         const val IMMEDIATE_REQUEST_CODE = 0x6E11
         const val FLEXIBLE_REQUEST_CODE = 0x6E12
     }

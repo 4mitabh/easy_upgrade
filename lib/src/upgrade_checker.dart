@@ -1,3 +1,6 @@
+// Internal — not exported from `package:easy_upgrade/easy_upgrade.dart`.
+// ignore_for_file: public_member_api_docs
+
 import 'dart:io' show Platform;
 
 import 'package:package_info_plus/package_info_plus.dart';

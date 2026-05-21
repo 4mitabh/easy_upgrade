@@ -11,8 +11,23 @@ import 'upgrade_checker.dart';
 import 'upgrade_dialog.dart';
 import 'upgrade_info.dart';
 
+/// Gate consulted before showing an optional (minor) upgrade prompt.
+///
+/// Return `false` to skip the prompt for this check. Use this hook to wire
+/// `shared_preferences` (or any other persistence) so a user who already
+/// dismissed a given version isn't nagged on every cold start.
+///
+/// Not consulted for [UpgradeSeverity.major] — those upgrades are always
+/// surfaced.
 typedef ShouldPromptOptional = FutureOr<bool> Function(UpgradeInfo info);
+
+/// Signature for [EasyUpgrade] event hooks.
 typedef UpgradeInfoCallback = void Function(UpgradeInfo info);
+
+/// Custom-dialog builder for iOS (Android always uses Play Core's native UI).
+///
+/// [force] is `true` for major upgrades. When `force` is `true`, [onLater] is
+/// `null` and your dialog must not be dismissible.
 typedef UpgradeDialogBuilder = Widget Function(
   BuildContext context,
   UpgradeInfo info,
@@ -21,24 +36,85 @@ typedef UpgradeDialogBuilder = Widget Function(
   VoidCallback? onLater,
 );
 
+/// Drop-in upgrade prompter.
+///
+/// Place anywhere below `MaterialApp` / `CupertinoApp`. On the first frame
+/// (after [initialDelay]) it queries the appropriate store and:
+///
+/// - shows a forced dialog (iOS) / Play Core immediate flow (Android) on
+///   [UpgradeSeverity.major];
+/// - shows an optional dialog (iOS) / Play Core flexible flow (Android) on
+///   [UpgradeSeverity.minor];
+/// - does nothing on [UpgradeSeverity.patch] / [UpgradeSeverity.none].
+///
+/// All knobs are optional — the defaults work out of the box.
 class EasyUpgrade extends StatefulWidget {
+  /// Widget tree this guards. Always rendered; the prompt is layered on top.
   final Widget child;
+
+  /// iTunes Search API region (ISO 3166 alpha-2). Defaults to `'US'`. If the
+  /// region returns no results, falls back to `'US'` automatically.
   final String appStoreRegion;
+
+  /// Override the bundle id used for the iOS store lookup. Useful for
+  /// staging/dev builds whose runtime bundle id differs from the App Store
+  /// listing (e.g. `com.foo.app.staging` vs `com.foo.app`).
   final String? bundleIdOverride;
+
+  /// Play Console `inAppUpdatePriority` threshold (0–5) at which we trigger
+  /// the **immediate** (blocking) Play Core flow. Default `4`.
   final int androidImmediatePriority;
+
+  /// Play Console `inAppUpdatePriority` threshold (0–5) at which we trigger
+  /// the **flexible** (background) Play Core flow. Default `1`.
   final int androidFlexiblePriority;
+
+  /// User-facing strings for the iOS dialog.
   final EasyUpgradeMessages messages;
+
+  /// Optional full override of the iOS dialog. Ignored on Android (Play Core
+  /// renders its own UI).
   final UpgradeDialogBuilder? dialogBuilder;
+
+  /// Delay between mount and the first store check. Default 1 second to let
+  /// the app paint first.
   final Duration initialDelay;
+
+  /// Master kill switch. When `false`, no check is performed.
   final bool enabled;
+
+  /// Whether to run in debug builds. Default `false` so devs aren't nagged
+  /// during `flutter run`.
   final bool enabledInDebug;
 
+  /// Gate for minor upgrades — return `false` to skip the prompt. See
+  /// [ShouldPromptOptional]. Not consulted for major upgrades.
   final ShouldPromptOptional? shouldPromptOptional;
+
+  /// Fires after every successful check, including those that produced no
+  /// upgrade. Good for analytics.
   final UpgradeInfoCallback? onCheck;
+
+  /// Fires immediately before the iOS dialog appears or Play Core's flow is
+  /// kicked off.
   final UpgradeInfoCallback? onPromptShown;
-  final UpgradeInfoCallback? onUpdateTapped;
+
+  /// Fires when the upgrade flow has been **initiated**:
+  /// - iOS: user tapped "Update" in the dialog (before `launchUrl`).
+  /// - Android: Play Core's UI launched successfully (the user has not yet
+  ///   accepted in Play's dialog; see [onUpdateAccepted] for that).
+  final UpgradeInfoCallback? onUpgradeFlowStarted;
+
+  /// Fires when the user has **accepted** the upgrade:
+  /// - iOS: `launchUrl` returned `true` (App Store opened).
+  /// - Android: Play Core returned `RESULT_OK` from its update activity.
+  final UpgradeInfoCallback? onUpdateAccepted;
+
+  /// Catches any error from store lookup, channel call, or hook execution.
+  /// All errors are otherwise silent.
   final void Function(Object error, StackTrace stack)? onError;
 
+  /// Creates an [EasyUpgrade]. The only required argument is [child].
   const EasyUpgrade({
     super.key,
     required this.child,
@@ -54,15 +130,21 @@ class EasyUpgrade extends StatefulWidget {
     this.shouldPromptOptional,
     this.onCheck,
     this.onPromptShown,
-    this.onUpdateTapped,
+    this.onUpgradeFlowStarted,
+    this.onUpdateAccepted,
     this.onError,
   });
 
   static _EasyUpgradeState? _activeInstance;
 
-  /// Manually trigger an upgrade check. Returns `null` if no [EasyUpgrade]
-  /// widget is currently mounted. All hooks (`onCheck`, `shouldPromptOptional`,
-  /// `onPromptShown`, `onUpdateTapped`) still fire as part of the normal flow.
+  /// Manually trigger an upgrade check.
+  ///
+  /// Returns `null` if no [EasyUpgrade] widget is currently mounted, otherwise
+  /// the [UpgradeInfo] from the check (which may be [UpgradeSeverity.none]).
+  /// All hooks fire as part of the normal flow.
+  ///
+  /// If multiple [EasyUpgrade] widgets are mounted, the most recently mounted
+  /// one is used.
   static Future<UpgradeInfo?> checkNow() async {
     final state = _activeInstance;
     if (state == null) return null;
@@ -96,6 +178,7 @@ class _EasyUpgradeState extends State<EasyUpgrade> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     AndroidUpdateManager.setFlexibleDownloadedListener(null);
+    AndroidUpdateManager.setUpdateAcceptedListener(null);
     if (EasyUpgrade._activeInstance == this) {
       EasyUpgrade._activeInstance = null;
     }
@@ -211,7 +294,7 @@ class _EasyUpgradeState extends State<EasyUpgrade> with WidgetsBindingObserver {
     UpgradeInfo info,
     bool force,
   ) async {
-    widget.onUpdateTapped?.call(info);
+    widget.onUpgradeFlowStarted?.call(info);
     final url = info.appStoreUrl;
     if (url == null) {
       if (dialogCtx.mounted && Navigator.of(dialogCtx).canPop()) {
@@ -228,8 +311,9 @@ class _EasyUpgradeState extends State<EasyUpgrade> with WidgetsBindingObserver {
     } catch (e, st) {
       widget.onError?.call(e, st);
     }
-    if (launched && !force && dialogCtx.mounted) {
-      if (Navigator.of(dialogCtx).canPop()) {
+    if (launched) {
+      widget.onUpdateAccepted?.call(info);
+      if (!force && dialogCtx.mounted && Navigator.of(dialogCtx).canPop()) {
         Navigator.of(dialogCtx).pop();
       }
     }
@@ -237,9 +321,12 @@ class _EasyUpgradeState extends State<EasyUpgrade> with WidgetsBindingObserver {
 
   Future<void> _dispatchAndroid(UpgradeInfo info) async {
     try {
+      AndroidUpdateManager.setUpdateAcceptedListener(() {
+        widget.onUpdateAccepted?.call(info);
+      });
       if (info.severity == UpgradeSeverity.major) {
         final ok = await AndroidUpdateManager.startImmediateUpdate();
-        if (ok) widget.onUpdateTapped?.call(info);
+        if (ok) widget.onUpgradeFlowStarted?.call(info);
       } else if (info.severity == UpgradeSeverity.minor) {
         AndroidUpdateManager.setFlexibleDownloadedListener(() async {
           try {
@@ -249,7 +336,7 @@ class _EasyUpgradeState extends State<EasyUpgrade> with WidgetsBindingObserver {
           }
         });
         final ok = await AndroidUpdateManager.startFlexibleUpdate();
-        if (ok) widget.onUpdateTapped?.call(info);
+        if (ok) widget.onUpgradeFlowStarted?.call(info);
       }
     } catch (e, st) {
       widget.onError?.call(e, st);

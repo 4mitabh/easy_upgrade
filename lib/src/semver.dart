@@ -1,3 +1,6 @@
+// Internal — not exported from `package:easy_upgrade/easy_upgrade.dart`.
+// ignore_for_file: public_member_api_docs
+
 import 'upgrade_info.dart';
 
 class SemVer {
