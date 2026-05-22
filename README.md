@@ -1,12 +1,12 @@
 # easy_upgrade
 
-An opinionated, drop-in upgrade prompter for Flutter apps.
+A drop-in upgrade prompter for Flutter apps. Zero configuration — just wrap your app and it works.
 
-- **Major** version bump → force an upgrade.
-- **Minor** version bump → prompt the user.
-- **Patch** version bump → silent.
+- **Major** bump → force the upgrade.
+- **Minor** bump → prompt the user.
+- **Patch** bump → silent.
 
-Works out of the box. Supports iOS App Store version lookup and Android in-app updates via Play Core.
+Talks to the iOS App Store via the iTunes Search API and uses Android Play Core for in-app updates. The iOS prompt auto-adapts to Material or Cupertino based on your app.
 
 ## Install
 
@@ -36,7 +36,7 @@ class MyApp extends StatelessWidget {
 }
 ```
 
-That's it. On first frame (after a 1-second delay), the plugin checks the appropriate store and shows a prompt if needed.
+That's it. One second after the first frame, the plugin checks the store and shows a prompt if an upgrade is available.
 
 ## How it decides
 
@@ -47,16 +47,17 @@ That's it. On first frame (after a 1-second delay), the plugin checks the approp
 
 Android relies on Play Console priority because Play Core does not expose the new app's semver string — only its `versionCode` and the priority you configure. Priority is also Google's recommended signal.
 
-### No custom dialog on Android
+## What the user sees
 
-Play Core renders its own UI for both flows:
+- **iOS** — an auto-detected Material or Cupertino dialog (or your own widget, via `dialogBuilder`).
+- **Android, immediate** — Play Core's full-screen, Google-branded blocking update screen.
+- **Android, flexible** — silent background download; when it finishes, Play's native restart prompt appears.
 
-- **Immediate**: full-screen Google-branded blocking update screen.
-- **Flexible**: silent background download; we call `completeUpdate()` when the download finishes, which triggers Play's native restart prompt.
-
-The auto-detected Material/Cupertino dialog is only used on iOS.
+Android UI is owned by Play Core by design — Google requires their UI for in-app updates, so there is no custom-dialog escape hatch on Android.
 
 ## Customization
+
+All parameters are optional. The defaults are tuned for the common case.
 
 ```dart
 EasyUpgrade(
@@ -96,7 +97,7 @@ final info = await EasyUpgrade.checkNow();
 
 Returns `null` if no `EasyUpgrade` widget is currently mounted, otherwise the `UpgradeInfo` from the check. All hooks still fire.
 
-## Fully custom dialog (iOS)
+## Override the iOS dialog
 
 ```dart
 EasyUpgrade(
@@ -120,9 +121,11 @@ EasyUpgrade(
 - Play Core `app-update` is pulled in transitively — no extra setup needed.
 - When releasing in Play Console, set your **in-app update priority** (0–5). The default mapping (`4+` immediate, `1+` flexible, `0` silent) is configurable.
 
-### Automating `inAppUpdatePriority` with Fastlane
+### Automating `inAppUpdatePriority` with Fastlane (optional)
 
-The whole point of this plugin's Android path is that you tell Play Console *how* to nag users at release time. You can let Fastlane diff your local version against what's currently live and set the priority for you — so a major bump auto-forces, a minor bump auto-prompts, and a patch ships silently.
+Skip this section if you're happy setting priority by hand in Play Console. If you ship from CI, this is how you keep the major/minor/patch contract honest without thinking about it.
+
+The Android path works by telling Play Console *how* to nag users at release time. Fastlane can diff your local version against what's currently live and set the priority for you — so a major bump auto-forces, a minor bump auto-prompts, and a patch ships silently.
 
 Fastlane's `upload_to_play_store` (a.k.a. `supply`) accepts an `in_app_update_priority:` parameter. Combine it with `google_play_track_release_names` to read the current production version. A minimal `Fastfile`:
 

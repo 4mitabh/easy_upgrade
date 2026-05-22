@@ -1,6 +1,6 @@
 name: easy_upgrade
-description: Opinionated, drop-in upgrade prompter. Forces major bumps, prompts on minor, silent on patch. iOS App Store + Android Play Core in-app updates.
-version: 0.1.0
+description: Drop-in upgrade prompter for Flutter — zero configuration. Automatically handles in-app updates via the iOS App Store and Android Play Core.
+version: 0.1.1
 homepage: https://github.com/4mitabh/easy_upgrade
 repository: https://github.com/4mitabh/easy_upgrade
 
