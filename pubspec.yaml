@@ -1,6 +1,6 @@
 name: easy_upgrade
 description: Drop-in upgrade prompter for Flutter — zero configuration. Automatically handles in-app updates via the iOS App Store and Android Play Core.
-version: 0.1.1
+version: 0.1.2
 homepage: https://github.com/4mitabh/easy_upgrade
 repository: https://github.com/4mitabh/easy_upgrade
 
@@ -12,7 +12,7 @@ dependencies:
   flutter:
     sdk: flutter
   http: ^1.2.0
-  package_info_plus: ^8.0.0
+  package_info_plus: ^10.1.0
   url_launcher: ^6.3.0
 
 dev_dependencies:
